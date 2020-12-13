@@ -11,7 +11,7 @@ public class Message {
     private Step step = null;
     private ByteBuffer in = null;
     private ByteBuffer out = null;
-    private SelectionKey peer;
+    private SelectionKey peer = null;
 
     public ByteBuffer getIn() {
         return in;
