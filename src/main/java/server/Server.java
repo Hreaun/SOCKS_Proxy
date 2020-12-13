@@ -21,7 +21,8 @@ public class Server {
     public void start() throws IOException {
 
         //socketAccepter регистрируется в selector в конструкторе
-        this.socketAccepter = new SocketAccepter(port, selector);
+        socketAccepter = new SocketAccepter(port, selector);
+        socketProcessor = new SocketProcessor();
 
         while (true) {
             try {
@@ -36,6 +37,9 @@ public class Server {
                     }
                     if (key.isReadable()) {
                         socketProcessor.read(key);
+                    }
+                    if (key.isWritable()) {
+                        socketProcessor.write(key);
                     }
                     iter.remove();
                 }

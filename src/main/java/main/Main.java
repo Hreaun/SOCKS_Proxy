@@ -19,6 +19,7 @@ public class Main {
 
         try {
             Server server = new Server(port);
+            server.start();
         } catch (IOException e) {
             e.printStackTrace();
         }

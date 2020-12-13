@@ -6,9 +6,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
-import java.util.Queue;
-import java.util.Set;
 
 public class SocketAccepter {
     private int port;
@@ -27,7 +24,7 @@ public class SocketAccepter {
     public void accept() throws IOException {
         SocketChannel client = serverSocket.accept();
         client.configureBlocking(false);
-        client.register(selector, SelectionKey.OP_READ, new Socket(client));
-        System.out.println("Socket accepted: " + client);
+        client.register(selector, SelectionKey.OP_READ);
+        System.out.println("Socket accepted: " + client.socket());
     }
 }
