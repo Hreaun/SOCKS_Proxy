@@ -3,15 +3,34 @@ package message;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 
-public class Message {
-    public enum Step {GREETING, CONNECTION, ERROR}
+public class Attachment {
+    public enum Role {CLIENT, DNS_RESOLVER}
+    public enum Step {GREETING, CONNECTION, CONNECTED , ERROR}
 
     public static int BUF_SIZE = 8 * 1024;
 
+    private final int clientId;
+    private Role role = null;
     private Step step = null;
     private ByteBuffer in = null;
     private ByteBuffer out = null;
     private SelectionKey peer = null;
+
+    public Attachment(int clientId) {
+        this.clientId = clientId;
+    }
+
+    public int getClientId() {
+        return clientId;
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public void setRole(Role role) {
+        this.role = role;
+    }
 
     public ByteBuffer getIn() {
         return in;

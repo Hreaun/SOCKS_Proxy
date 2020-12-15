@@ -1,15 +1,21 @@
 package server;
 
+import message.Attachment;
+
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
 
 public class Server {
     private SocketAccepter socketAccepter = null;
     private SocketProcessor socketProcessor = null;
+    private DNSResolver dnsResolver = null;
     private final Selector selector;
+    private final Map<Integer, SelectionKey> clients = new HashMap<>();
 
     private final int port;
 
@@ -22,7 +28,11 @@ public class Server {
 
         //socketAccepter регистрируется в selector в конструкторе
         socketAccepter = new SocketAccepter(port, selector);
-        socketProcessor = new SocketProcessor();
+
+        //dnsResolver регистрируется в selector в конструкторе
+        dnsResolver = new DNSResolver(selector);
+        socketProcessor = new SocketProcessor(dnsResolver);
+
 
         while (true) {
             try {
@@ -34,12 +44,22 @@ public class Server {
                     SelectionKey key = iter.next();
                     if (key.isAcceptable()) {
                         socketAccepter.accept();
-                    }
-                    if (key.isReadable()) {
-                        socketProcessor.read(key);
-                    }
-                    if (key.isWritable()) {
-                        socketProcessor.write(key);
+                    } else if (key.isConnectable()) {
+                        socketProcessor.connect(key);
+                    } else if (key.isReadable()) {
+                        Attachment attachment = (Attachment) key.attachment();
+                        if ((attachment != null) && (attachment.getRole() == Attachment.Role.DNS_RESOLVER)) {
+                            dnsResolver.readDNSMessage(key, clients);
+                        } else {
+                            socketProcessor.read(key, clients);
+                        }
+                    } else if (key.isWritable()) {
+                        Attachment attachment = (Attachment) key.attachment();
+                        if ((attachment != null) && (attachment.getRole() == Attachment.Role.DNS_RESOLVER)) {
+                            dnsResolver.sendDNSRequest(key);
+                        } else {
+                            socketProcessor.write(key);
+                        }
                     }
                     iter.remove();
                 }
