@@ -40,7 +40,10 @@ public class SocketProcessor {
             readConnection(key, attachment);
         } else {
             if (channel.read(attachment.getIn()) < 1) {
-                System.out.println("close " + attachment.getClientId());
+                close(key);
+                return;
+            }
+            if (attachment.getPeer() == null) {
                 close(key);
                 return;
             }
@@ -89,7 +92,6 @@ public class SocketProcessor {
             channel.write(attachment.getOut());
         }
         if (attachment.getOut().remaining() == 0) {
-            System.out.println("Sent choice: " + channel.socket());
             attachment.setStep(Attachment.Step.CONNECTION);
             key.interestOps(SelectionKey.OP_READ);
             key.attach(attachment);
@@ -106,8 +108,6 @@ public class SocketProcessor {
         }
         byte[] port = Arrays.copyOfRange(ByteBuffer.allocate(4).putInt(address.getPort()).array(), 2, 4);
         responseMsg.put(ipBytes).put(port);
-
-        System.out.println("Made response packet");
         attachment.setIn(responseMsg);
     }
 
@@ -148,8 +148,6 @@ public class SocketProcessor {
         connectionAttachment.setIn(ByteBuffer.allocate(Attachment.BUF_SIZE));
         connectionAttachment.setPeer(key);
         connectionKey.attach(connectionAttachment);
-
-        System.out.println("Got connection req: " + ((SocketChannel) key.channel()).socket());
     }
 
 
@@ -181,14 +179,12 @@ public class SocketProcessor {
 
                 InetAddress addr;
                 if (connection[3] == SocksConsts.DOMAIN_NAME) {
-                    String name = new String(Arrays.copyOfRange(connection, addrStartPosition,
-                            addrStartPosition + addrLength), StandardCharsets.UTF_8) + ".";
-
-                    addr = dnsResolver.getAddress(name);
-                    if (addr != null) {
-                        makeNewProxyConnection(addr, port, key, attachment);
+                    if (attachment.getRequestAddr() != null) {
+                        makeNewProxyConnection(attachment.getRequestAddr(), port, key, attachment);
                     } else {
-                        dnsResolver.makeDNSRequest(name, attachment.getClientId());
+                        String name = new String(Arrays.copyOfRange(connection, addrStartPosition,
+                                addrStartPosition + addrLength), StandardCharsets.UTF_8) + ".";
+                        dnsResolver.makeDNSRequest(name, attachment.getClientId(), key);
                         key.interestOps(0);
                     }
                 } else {
@@ -213,7 +209,6 @@ public class SocketProcessor {
 
         for (byte authMethod : authMethods) {
             if (authMethod == SocksConsts.NO_AUTH) {
-                System.out.println("Got greeting: " + channel.socket());
                 attachment.setStep(Attachment.Step.GREETING);
                 attachment.getIn().clear();
                 key.interestOps(SelectionKey.OP_WRITE);

@@ -33,15 +33,15 @@ public class Server {
         dnsResolver = new DNSResolver(selector);
         socketProcessor = new SocketProcessor(dnsResolver);
 
-
-        while (true) {
+        while (selector.select() > -1) {
             try {
-                selector.select();
-
                 Set<SelectionKey> selectedKeys = selector.selectedKeys();
                 Iterator<SelectionKey> iter = selectedKeys.iterator();
                 while (iter.hasNext()) {
                     SelectionKey key = iter.next();
+                    if (!key.isValid()) {
+                        continue;
+                    }
                     if (key.isAcceptable()) {
                         socketAccepter.accept();
                     } else if (key.isConnectable()) {
@@ -49,7 +49,7 @@ public class Server {
                     } else if (key.isReadable()) {
                         Attachment attachment = (Attachment) key.attachment();
                         if ((attachment != null) && (attachment.getRole() == Attachment.Role.DNS_RESOLVER)) {
-                            dnsResolver.readDNSMessage(key, clients);
+                            dnsResolver.readDNSMessage(key);
                         } else {
                             socketProcessor.read(key, clients);
                         }
@@ -64,7 +64,7 @@ public class Server {
                     iter.remove();
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                System.err.println(e.getMessage());
             }
         }
     }

@@ -4,25 +4,22 @@ import message.Attachment;
 import org.xbill.DNS.*;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class DNSResolver {
-    private Attachment attachment;
-    private SelectionKey dnsKey;
+    private final Attachment attachment;
+    private final SelectionKey dnsKey;
     private final int MESSAGE_LENGTH = 512;
     private final DatagramChannel datagramChannel;
     private final List<InetSocketAddress> dnsServers;
-    private final Map<String, InetAddress> dnsCache = new HashMap<>();
-    private final Map<String, List<Integer>> domainNameClientMap = new HashMap<>();
+    private final Map<Integer, SelectionKey> domainNameClientMap = new HashMap<>();
 
     public DNSResolver(Selector selector) throws IOException {
         dnsServers = ResolverConfig.getCurrentConfig().servers();
@@ -34,7 +31,7 @@ public class DNSResolver {
         dnsKey = datagramChannel.register(selector, SelectionKey.OP_READ, dnsResolverAttachment);
     }
 
-    public void readDNSMessage(SelectionKey key, Map<Integer, SelectionKey> clients) throws IOException {
+    public void readDNSMessage(SelectionKey key) throws IOException {
         DatagramChannel channel = ((DatagramChannel) key.channel());
         Attachment attachment = (Attachment) key.attachment();
         if (attachment.getIn() == null) {
@@ -45,57 +42,38 @@ public class DNSResolver {
         if (channel.receive(attachment.getIn()) == null) {
             return;
         }
-        try {
-            Message dnsMessage = parseDNSMessage(attachment.getIn().array());
 
-            List<Record> answers = dnsMessage.getSection(Section.ANSWER);
-            ARecord answer = null;
+        Message dnsMessage = parseDNSMessage(attachment.getIn().array());
+        int id = dnsMessage.getHeader().getID();
 
-            for (Record record : answers) {
-                if (record.getType() == Type.A) {
-                    answer = (ARecord) record;
-                    break;
-                }
+        List<Record> answers = dnsMessage.getSection(Section.ANSWER);
+        ARecord answer = null;
+
+        for (Record record : answers) {
+            if (record.getType() == Type.A) {
+                answer = (ARecord) record;
+                break;
             }
+        }
 
-            if (answer != null) {
-                addNameToCache(answer);
-                notifyClients(answer, clients);
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (answer != null) {
+            notifyClient(answer, id);
         }
     }
 
-    private void notifyClients(ARecord answer, Map<Integer, SelectionKey> clients) {
-        List<Integer> clientsIds = domainNameClientMap.get(answer.getName().toString());
-        if ((clientsIds == null) || (clients == null)) {
-            return;
-        }
-
-        clientsIds.forEach(id -> {
-            //Attachment clientAttachment = (Attachment) clients.get(id).attachment();
-            //clientAttachment.setStep(Attachment.Step.CONNECTION);
-            if (clients.get(id).isValid()) {
-                clients.get(id).interestOps(SelectionKey.OP_WRITE);
-            } else {
-                clients.remove(id);
-            }
-        });
-    }
-
-    private void addNameToCache(ARecord answer) {
-        System.out.println("Got dns response " + answer.getName().toString());
-        dnsCache.put(answer.getName().toString(), answer.getAddress());
+    private void notifyClient(ARecord answer, int clientId) {
+        Attachment clientAttachment = (Attachment) domainNameClientMap.get(clientId).attachment();
+        clientAttachment.setRequestAddr(answer.getAddress());
+        domainNameClientMap.get(clientId).interestOps(SelectionKey.OP_WRITE);
+        domainNameClientMap.remove(clientId);
     }
 
     public Message parseDNSMessage(byte[] dnsMessage) throws IOException {
         return new Message(dnsMessage);
     }
 
-    private byte[] makeDNSMessage(String name) throws TextParseException {
-        Message dnsMessage = new Message();
+    private byte[] makeDNSMessage(String name, Integer clientId) throws TextParseException {
+        Message dnsMessage = new Message(clientId);
         Header header = dnsMessage.getHeader();
         header.setOpcode(Opcode.QUERY);
         header.setFlag(Flags.RD);
@@ -103,13 +81,9 @@ public class DNSResolver {
         return dnsMessage.toWire(MESSAGE_LENGTH);
     }
 
-    public void makeDNSRequest(String name, Integer clientId) throws TextParseException {
-        System.out.println("Made dns req: " + name);
-        byte[] dnsMessage = makeDNSMessage(name);
-        if (!domainNameClientMap.containsKey(name)) {
-            domainNameClientMap.put(name, new ArrayList<>());
-        }
-        domainNameClientMap.get(name).add(clientId);
+    public void makeDNSRequest(String name, Integer clientId, SelectionKey key) throws TextParseException {
+        byte[] dnsMessage = makeDNSMessage(name, clientId);
+        domainNameClientMap.put(clientId, key);
 
         ByteBuffer dnsBuf = attachment.getOut();
         if (dnsBuf != null) {
@@ -131,9 +105,5 @@ public class DNSResolver {
             attachment.setOut(null);
             key.interestOps(SelectionKey.OP_READ);
         }
-    }
-
-    public InetAddress getAddress(String name) {
-        return dnsCache.get(name);
     }
 }

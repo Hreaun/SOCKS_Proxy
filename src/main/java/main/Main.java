@@ -23,7 +23,7 @@ public class Main {
             Server server = new Server(port);
             server.start();
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println(e.getMessage());
         }
 
     }

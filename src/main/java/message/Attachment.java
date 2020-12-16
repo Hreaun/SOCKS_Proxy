@@ -1,5 +1,6 @@
 package message;
 
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 
@@ -7,7 +8,7 @@ public class Attachment {
     public enum Role {CLIENT, DNS_RESOLVER}
     public enum Step {GREETING, CONNECTION, CONNECTED , ERROR}
 
-    public static int BUF_SIZE = 8 * 1024;
+    public static int BUF_SIZE = 64 * 1024;
 
     private final int clientId;
     private Role role = null;
@@ -15,6 +16,15 @@ public class Attachment {
     private ByteBuffer in = null;
     private ByteBuffer out = null;
     private SelectionKey peer = null;
+    private InetAddress requestAddr = null;
+
+    public InetAddress getRequestAddr() {
+        return requestAddr;
+    }
+
+    public void setRequestAddr(InetAddress requestAddr) {
+        this.requestAddr = requestAddr;
+    }
 
     public Attachment(int clientId) {
         this.clientId = clientId;

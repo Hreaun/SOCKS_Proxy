@@ -19,6 +19,16 @@ public class SocketAccepter {
         this.serverSocket.bind(new InetSocketAddress(port));
         serverSocket.configureBlocking(false);
         serverSocket.register(selector, SelectionKey.OP_ACCEPT);
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                serverSocket.close();
+                selector.close();
+                System.out.println("Server is closed.");
+            } catch (IOException e){
+                System.err.println(e.getMessage());
+            }
+        }));
     }
 
     public void accept() throws IOException {
