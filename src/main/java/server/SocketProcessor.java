@@ -35,11 +35,15 @@ public class SocketProcessor {
             attachment.setRole(Attachment.Role.CLIENT);
             attachment.setIn(ByteBuffer.allocate(Attachment.BUF_SIZE));
             readGreeting(key, channel, attachment);
-        } else if (channel.read(attachment.getIn()) < 1) {
-            close(key);
-        } else if (attachment.getPeer() == null) {
+        } else if (attachment.getStep() == Attachment.Step.CONNECTION) {
+            channel.read(attachment.getIn());
             readConnection(key, attachment);
         } else {
+            if (channel.read(attachment.getIn()) < 1) {
+                System.out.println("close " + attachment.getClientId());
+                close(key);
+                return;
+            }
             attachment.getPeer().interestOps(attachment.getPeer().interestOps() | SelectionKey.OP_WRITE);
             key.interestOps(key.interestOps() ^ SelectionKey.OP_READ);
             attachment.getIn().flip();
@@ -51,17 +55,25 @@ public class SocketProcessor {
 
         if ((attachment.getStep() == Attachment.Step.GREETING) || (attachment.getStep() == Attachment.Step.ERROR)) {
             writeServerChoice(key, attachment);
-        }
-        if (attachment.getStep() == Attachment.Step.CONNECTION) {
+        } else if (attachment.getStep() == Attachment.Step.CONNECTION) {
             readConnection(key, attachment);
         } else if (attachment.getStep() == Attachment.Step.CONNECTED) {
+            writeData(key, attachment);
+        }
+    }
+
+    private void writeData(SelectionKey key, Attachment attachment) throws IOException {
+        SocketChannel channel = ((SocketChannel) key.channel());
+        if (channel.write(attachment.getOut()) == -1) {
+            close(key);
+        } else if (attachment.getOut().remaining() == 0) {
             if (attachment.getPeer() == null) {
                 close(key);
-                return;
+            } else {
+                attachment.getOut().clear();
+                attachment.getPeer().interestOps(attachment.getPeer().interestOps() | SelectionKey.OP_READ);
+                key.interestOps(key.interestOps() ^ SelectionKey.OP_WRITE);
             }
-            attachment.getOut().clear();
-            attachment.getPeer().interestOps(attachment.getPeer().interestOps() | SelectionKey.OP_READ);
-            key.interestOps(key.interestOps() ^ SelectionKey.OP_WRITE);
         }
     }
 
@@ -95,19 +107,23 @@ public class SocketProcessor {
         byte[] port = Arrays.copyOfRange(ByteBuffer.allocate(4).putInt(address.getPort()).array(), 2, 4);
         responseMsg.put(ipBytes).put(port);
 
-        System.out.println("Made response packet: " + address + " " + address.getPort());
-        attachment.setOut(responseMsg);
+        System.out.println("Made response packet");
+        attachment.setIn(responseMsg);
     }
 
     public void connect(SelectionKey key) throws IOException {
         SocketChannel channel = ((SocketChannel) key.channel());
         Attachment attachment = ((Attachment) key.attachment());
-
         if (!channel.finishConnect()) {
             return;
         }
-        makeResponseMessage(attachment, (InetSocketAddress) channel.getLocalAddress());
-        attachment.setIn(ByteBuffer.allocate(Attachment.BUF_SIZE));
+        InetSocketAddress socketAddress = (InetSocketAddress) ((SocketChannel) attachment.getPeer().channel()).getLocalAddress();
+
+        makeResponseMessage(attachment, socketAddress);
+        attachment.getIn().flip();
+
+        attachment.setOut(((Attachment) attachment.getPeer().attachment()).getIn());
+        ((Attachment) attachment.getPeer().attachment()).setOut(attachment.getIn());
 
         attachment.getPeer().interestOps(SelectionKey.OP_WRITE | SelectionKey.OP_READ);
         key.interestOps(0);
@@ -116,24 +132,29 @@ public class SocketProcessor {
     private void makeNewProxyConnection(InetAddress addr, int port, SelectionKey key, Attachment attachment) throws IOException {
         SocketChannel connectionSocket = SocketChannel.open();
         connectionSocket.configureBlocking(false);
+
         connectionSocket.connect(new InetSocketAddress(addr, port));
         SelectionKey connectionKey = connectionSocket.register(key.selector(), SelectionKey.OP_CONNECT);
+
         key.interestOps(0);
         attachment.setPeer(connectionKey);
         attachment.getIn().clear();
+        attachment.setStep(Attachment.Step.CONNECTED);
 
         Attachment connectionAttachment = new Attachment(getNextId());
         connectionAttachment.setRole(Attachment.Role.CLIENT);
         connectionAttachment.setStep(Attachment.Step.CONNECTED);
+        connectionAttachment.setOut(ByteBuffer.allocate(Attachment.BUF_SIZE));
+        connectionAttachment.setIn(ByteBuffer.allocate(Attachment.BUF_SIZE));
         connectionAttachment.setPeer(key);
         connectionKey.attach(connectionAttachment);
+
+        System.out.println("Got connection req: " + ((SocketChannel) key.channel()).socket());
     }
 
 
     private void readConnection(SelectionKey key, Attachment attachment) throws IOException {
-        SocketChannel channel = (SocketChannel) key.channel();
 
-        channel.read(attachment.getIn());
         if (attachment.getIn().position() > 4) {
             byte[] connection = Arrays.copyOfRange(attachment.getIn().array(), 0, attachment.getIn().position());
 
@@ -166,18 +187,15 @@ public class SocketProcessor {
                     addr = dnsResolver.getAddress(name);
                     if (addr != null) {
                         makeNewProxyConnection(addr, port, key, attachment);
-                        attachment.getIn().clear();
-                        attachment.setStep(Attachment.Step.CONNECTED);
                     } else {
                         dnsResolver.makeDNSRequest(name, attachment.getClientId());
+                        key.interestOps(0);
                     }
                 } else {
                     addr = InetAddress.getByAddress(Arrays.copyOfRange(connection, addrStartPosition,
                             addrStartPosition + addrLength));
                     makeNewProxyConnection(addr, port, key, attachment);
-                    attachment.setStep(Attachment.Step.CONNECTED);
                 }
-                System.out.println("Got connection req: " + channel.socket());
             }
         }
     }

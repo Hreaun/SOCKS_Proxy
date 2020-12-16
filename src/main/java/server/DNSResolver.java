@@ -75,8 +75,8 @@ public class DNSResolver {
         }
 
         clientsIds.forEach(id -> {
-            Attachment clientAttachment = (Attachment) clients.get(id).attachment();
-            clientAttachment.setStep(Attachment.Step.CONNECTION);
+            //Attachment clientAttachment = (Attachment) clients.get(id).attachment();
+            //clientAttachment.setStep(Attachment.Step.CONNECTION);
             if (clients.get(id).isValid()) {
                 clients.get(id).interestOps(SelectionKey.OP_WRITE);
             } else {
@@ -86,13 +86,12 @@ public class DNSResolver {
     }
 
     private void addNameToCache(ARecord answer) {
-        System.out.println("got dns response " + answer.getName().toString());
+        System.out.println("Got dns response " + answer.getName().toString());
         dnsCache.put(answer.getName().toString(), answer.getAddress());
     }
 
     public Message parseDNSMessage(byte[] dnsMessage) throws IOException {
-        Message msg = new Message(dnsMessage);
-        return msg;
+        return new Message(dnsMessage);
     }
 
     private byte[] makeDNSMessage(String name) throws TextParseException {
@@ -105,7 +104,7 @@ public class DNSResolver {
     }
 
     public void makeDNSRequest(String name, Integer clientId) throws TextParseException {
-        System.out.println("made dns req: " + name);
+        System.out.println("Made dns req: " + name);
         byte[] dnsMessage = makeDNSMessage(name);
         if (!domainNameClientMap.containsKey(name)) {
             domainNameClientMap.put(name, new ArrayList<>());
@@ -120,7 +119,6 @@ public class DNSResolver {
         } else {
             attachment.setOut(ByteBuffer.wrap(dnsMessage));
         }
-
 
         dnsKey.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
     }

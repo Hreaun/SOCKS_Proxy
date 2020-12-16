@@ -1,17 +1,14 @@
 package main;
 
 import org.apache.log4j.BasicConfigurator;
-import org.xbill.DNS.ResolverConfig;
 import server.Server;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
         BasicConfigurator.configure();
-        int port = 0;
+        int port;
         try {
             if (args.length != 1) {
                 throw new IllegalArgumentException("Enter port to bind server");
